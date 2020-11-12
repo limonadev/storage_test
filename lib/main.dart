@@ -1,12 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:sqflite_sqlcipher/sqflite.dart';
 
-void main() {
-  runApp(MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final database = await openDatabase(
+    inMemoryDatabasePath,
+    onCreate: (db, v) async {
+      print('CREATION');
+      await db.execute(
+        'CREATE TABLE Test (id INTEGER PRIMARY KEY, content TEXT)',
+      );
+    },
+    password: 'PASSWORD',
+    version: 1,
+  );
+  final storage = FlutterSecureStorage();
+  runApp(MyApp(database, storage));
 }
 
 class MyApp extends StatelessWidget {
+  MyApp(this.database, this.storage);
+
+  final Database database;
+  final FlutterSecureStorage storage;
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -15,16 +34,18 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      home: StoragePage(),
+      home: StoragePage(
+        database,
+        storage,
+      ),
     );
   }
 }
 
 class StoragePage extends StatefulWidget {
-  StoragePage()
-      : storage = FlutterSecureStorage(),
-        storageKey = 'CONTENT';
+  StoragePage(this.database, this.storage) : storageKey = 'CONTENT';
 
+  final Database database;
   final FlutterSecureStorage storage;
   final String storageKey;
 
@@ -34,7 +55,9 @@ class StoragePage extends StatefulWidget {
 
 class _StoragePageState extends State<StoragePage> {
   bool checkingStorage = false,
+      checkingSQLite = false,
       loadingFromAssets = false,
+      savingToSQLite = false,
       savingToStorage = false;
   String content;
   List<String> messages = [];
@@ -49,12 +72,10 @@ class _StoragePageState extends State<StoragePage> {
           children: [
             Spacer(),
             _saveToStorageWidget(),
-            OutlinedButton(
-              onPressed: () {},
-              child: Text('Save to protected SQLite'),
-            ),
+            _saveToSQLiteWidget(),
             Spacer(flex: 2),
             _assertStorageContentWidget(),
+            _assertSQLiteContentWidget(),
             Spacer(flex: 2),
             _loadFromAssetsWidget(),
             Spacer(),
@@ -83,6 +104,19 @@ class _StoragePageState extends State<StoragePage> {
         ),
       ),
     );
+  }
+
+  Widget _assertSQLiteContentWidget() {
+    Widget result;
+    if (checkingSQLite == true) {
+      result = CircularProgressIndicator();
+    } else {
+      result = OutlinedButton(
+        onPressed: _assertContentFromSQLite,
+        child: Text('Assert content from SQLite'),
+      );
+    }
+    return result;
   }
 
   Widget _assertStorageContentWidget() {
@@ -115,6 +149,19 @@ class _StoragePageState extends State<StoragePage> {
     return result;
   }
 
+  Widget _saveToSQLiteWidget() {
+    Widget result;
+    if (savingToSQLite == true) {
+      result = CircularProgressIndicator();
+    } else {
+      result = OutlinedButton(
+        onPressed: _saveContentOnSQLite,
+        child: Text('Save to protected SQLite'),
+      );
+    }
+    return result;
+  }
+
   Widget _saveToStorageWidget() {
     Widget result;
     if (savingToStorage == true) {
@@ -126,6 +173,31 @@ class _StoragePageState extends State<StoragePage> {
       );
     }
     return result;
+  }
+
+  void _assertContentFromSQLite() async {
+    setState(() {
+      checkingSQLite = true;
+    });
+
+    var start = DateTime.now();
+    var contentFromSQLite = (await widget.database.query(
+      'Test',
+      columns: ['content'],
+    ))[0]['content'];
+
+    var end = DateTime.now();
+
+    setState(() {
+      checkingSQLite = false;
+    });
+
+    _registerMessages(
+      [
+        'Retrieving content from SQLite total time: ${end.difference(start).inMilliseconds} ms',
+        'Content from file is ${content == contentFromSQLite ? 'equal to' : 'different from'} the content in SQLite',
+      ],
+    );
   }
 
   void _assertContentFromStorage() async {
@@ -166,6 +238,27 @@ class _StoragePageState extends State<StoragePage> {
 
     _registerMessage(
       'Loading total time: ${end.difference(start).inMilliseconds} ms',
+    );
+  }
+
+  void _saveContentOnSQLite() async {
+    setState(() {
+      savingToSQLite = true;
+    });
+
+    var start = DateTime.now();
+    await widget.database.insert(
+      'Test',
+      {'content': content},
+    );
+    var end = DateTime.now();
+
+    setState(() {
+      savingToSQLite = false;
+    });
+
+    _registerMessage(
+      'Saving to SQLite total time: ${end.difference(start).inMilliseconds} ms',
     );
   }
 

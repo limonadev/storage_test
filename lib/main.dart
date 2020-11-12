@@ -37,7 +37,8 @@ class _StoragePageState extends State<StoragePage> {
       loadingFromAssets = false,
       savingToStorage = false;
   String content;
-  String message;
+  List<String> messages = [];
+  ScrollController messagesController = ScrollController();
 
   @override
   Widget build(BuildContext context) {
@@ -57,20 +58,24 @@ class _StoragePageState extends State<StoragePage> {
             Spacer(flex: 2),
             _loadFromAssetsWidget(),
             Spacer(),
-            RichText(
-              text: TextSpan(
-                style: TextStyle(
-                  color: Colors.black,
-                ),
-                children: [
-                  TextSpan(
-                    text: 'Messages:\n',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                    ),
+            Text(
+              'Messages:',
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Container(
+              height: 200.0,
+              child: ListView.builder(
+                controller: messagesController,
+                itemBuilder: (context, index) => Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0),
+                  child: Text(
+                    messages[index] ?? '',
                   ),
-                  TextSpan(text: message ?? ''),
-                ],
+                ),
+                itemCount: messages.length,
               ),
             ),
             Spacer(),
@@ -128,15 +133,22 @@ class _StoragePageState extends State<StoragePage> {
       checkingStorage = true;
     });
 
+    var start = DateTime.now();
     var contentFromStorage = await widget.storage.read(
       key: widget.storageKey,
     );
+    var end = DateTime.now();
 
     setState(() {
-      message =
-          'Content from file is ${content == contentFromStorage ? 'equal to' : 'different from'} the content in Storage';
       checkingStorage = false;
     });
+
+    _registerMessages(
+      [
+        'Retrieving content from Storage total time: ${end.difference(start).inMilliseconds} ms',
+        'Content from file is ${content == contentFromStorage ? 'equal to' : 'different from'} the content in Storage',
+      ],
+    );
   }
 
   void _loadFileFromAssets() async {
@@ -149,10 +161,12 @@ class _StoragePageState extends State<StoragePage> {
     var end = DateTime.now();
 
     setState(() {
-      message =
-          'Loading total time: ${end.difference(start).inMilliseconds} ms';
       loadingFromAssets = false;
     });
+
+    _registerMessage(
+      'Loading total time: ${end.difference(start).inMilliseconds} ms',
+    );
   }
 
   void _saveContentOnStorage() async {
@@ -165,9 +179,30 @@ class _StoragePageState extends State<StoragePage> {
     var end = DateTime.now();
 
     setState(() {
-      message =
-          'Saving to Storage total time: ${end.difference(start).inMilliseconds} ms';
       savingToStorage = false;
     });
+
+    _registerMessage(
+      'Saving to Storage total time: ${end.difference(start).inMilliseconds} ms',
+    );
+  }
+
+  Future<void> _registerMessage(String message) async {
+    setState(() {
+      messages.add(message);
+    });
+
+    await Future.delayed(Duration(milliseconds: 100));
+    messagesController.animateTo(
+      messagesController.position.maxScrollExtent,
+      duration: Duration(milliseconds: 100),
+      curve: Curves.linear,
+    );
+  }
+
+  void _registerMessages(List<String> messages) async {
+    for (var message in messages) {
+      await _registerMessage(message);
+    }
   }
 }
